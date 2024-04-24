@@ -23,3 +23,13 @@ Have the endpoint use query string to allow you to select a time period of up to
 ### Task 4
 
 Create a rocket in the Kerbal Space Program and have it dock with the International Space Station. Look online for help tutorials and videos. Send a video or screenshot of your spacecraft after you have done it successfully.
+
+
+# Notes
+
+### Compiling
+
+Before trying to compile my code, run this to install all dependencies:
+
+> pip install -r requirements.txt
+
