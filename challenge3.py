@@ -121,25 +121,11 @@ def groupAndAvg(start, minutes):
         end_time_string = stringify(end_time_dict)
 
         query = queryDatabase(start_time_string, end_time_string)
-        
-        ## Get the average of query, add that to response
-        sums = {}
-        counts = {}
-        for item in query:
-            for key, value in item.items():
-                if isinstance(value, (int, float)):
-                    sums[key] = sums.get(key, 0) + value
-                    counts[key] = counts.get(key, 0) + 1
-
-        averages = {key: sums[key] / counts[key] for key in sums}
-        averages['time_tag_start'] = start_time_string
-        averages['time_tag_end'] = end_time_string
-
-        response.append(averages)
+        for row in query:
+            response.append(row)
 
         continue
 
-    print(response)
     return response
 
 '''
@@ -235,13 +221,35 @@ Queries the database for entries between start and end time.
 def queryDatabase(start_time, end_time):
 
     # Connect to the database
-    print("Querying database")
     conn = sqlite3.connect('rtsw_mag_1m.db')
     cursor = conn.cursor()
 
     # Form the query
     select_query = ("""
-    SELECT DISTINCT *
+    SELECT
+        MIN(time_tag) AS time_tag_start,
+        AVG(active),
+        AVG(source),
+        AVG(range),
+        AVG(scale),
+        AVG(sensitivity),
+        AVG(manual_mode),
+        AVG(sample_size),
+        AVG(bt),
+        AVG(bx_gse),
+        AVG(by_gse),
+        AVG(bz_gse),
+        AVG(theta_gse), 
+        AVG(phi_gse),
+        AVG(bx_gsm),
+        AVG(by_gsm),
+        AVG(bz_gsm),
+        AVG(theta_gsm),
+        AVG(phi_gsm),
+        AVG(max_telemetry_flag),
+        AVG(max_data_flag),
+        AVG(overall_quality),
+        MAX(time_tag) AS time_tag_end
     FROM my_table
     WHERE time_tag >= '""" + start_time +
     """' AND time_tag <= '""" + end_time + """'""")
@@ -253,7 +261,7 @@ def queryDatabase(start_time, end_time):
     response = []
     for row in rows:
         response.append({
-            'time_tag': row[0],
+            'time_tag_start': row[0],
             'active': row[1],
             'source': row[2],
             'range': row[3],
@@ -274,7 +282,8 @@ def queryDatabase(start_time, end_time):
             'phi_gsm': row[18],
             'max_telemetry_flag': row[19],
             'max_data_flag': row[20],
-            'overall_quality': row[21]
+            'overall_quality': row[21],
+            'time_tag_end': row[22]
         })
 
     # Commit changes and close cursor
@@ -369,8 +378,6 @@ def createTable(data):
     # Commit changes and close connection
     conn.commit()
     conn.close()
-
-    print("SQLite table created and data inserted successfully.")
 
     return
 
