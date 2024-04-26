@@ -38,3 +38,27 @@ Before trying to compile my code, run this to install all dependencies:
 
 > pip install -r requirements.txt
 
+### Running my code
+
+**Challenge 1**
+
+1. Simply run:
+
+> python challenge1.py
+
+**Challenge 2**
+
+1. Simply run:
+
+>python challenge2.py
+
+**Challenge 3**
+
+1. Run:
+
+>python challenge3.py
+
+2. Go to the locally hosted URL (e.g. http://127.0.0.1:5000).
+3. Input a time window and select enter.
+4. A json of 5-minute averages should be returned to you.
+
