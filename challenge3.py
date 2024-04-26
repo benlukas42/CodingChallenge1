@@ -1,11 +1,20 @@
+'''
+Challenge task 3 for Saber Astronautics.
+Creates a REST endpoint that gets a time window from the user.
+This time window is used to extract data, which is averaged into 5-minute periods
+and returned to the user via json.
+
+Author: Ben Lukas
+'''
+
 from flask import Flask, request, jsonify, render_template
 import json
 import sqlite3
+import calendar
 
 filepath = './rtsw_mag_1m.json'
 
 app = Flask(__name__)
-time_period = ("2024-04-24T22:35:00", "2024-04-24T23:35:00")
 
 '''
 Represents the REST endpoint.
@@ -19,6 +28,119 @@ def index():
         return jsonify(response), 200
     else:
         return render_template('index.html')
+    
+
+'''
+Ensures that a time dictionary is coherent.
+'''
+def ensureTimeDict(time):
+    if time['minute'] >= 60:
+        time['minute'] -= 60
+        time['hour'] += 1
+    if time['hour'] >= 24:
+        time['hour'] -= 24
+        time['day'] += 1
+    if time['day'] > calendar.monthrange(time['year'], time['month'])[1]:
+        time['day'] -= calendar.monthrange(time['year'], time['month'])
+        time['month'] += 1
+    if time['month'] > 12:
+        time['month'] -= 12
+        time['year'] += 1
+    return
+
+'''
+Turns a time dictionary into a string.
+Structure: 2024-04-23T23:38:00
+'''
+def stringify(time):
+    string = ""
+    string += str(time['year'])
+    string += '-'
+    if(len(str(time['month'])) < 2):
+        string += '0'
+    string += str(time['month'])
+    string += '-'
+    if(len(str(time['day'])) < 2):
+        string += '0'
+    string += str(time['day'])
+    string += 'T'
+    if(len(str(time['hour'])) < 2):
+        string += '0'
+    string += str(time['hour'])
+    string += ":"
+    if(len(str(time['minute'])) < 2):
+        string += '0'
+    string += str(time['minute'])
+    string += ":"
+    if(len(str(time['second'])) < 2):
+        string += '0'
+    string += str(time['second'])
+
+    return string
+
+'''
+Groups data into periods of 5-minute averages.
+'''
+def groupAndAvg(start, minutes):
+    response = []
+
+    cycles = int(minutes / 5)
+
+    # Run this at least once
+    if cycles == 0:
+        cycles += 1
+
+    for i in range(0, cycles):
+        start_thresh = i * 5
+        end_thresh = start_thresh + 5
+        # end thresh can't be higher than minutes
+        if end_thresh > minutes:
+            end_thresh = minutes
+
+        start_time_dict = {
+            'year': start['year'],
+            'month': start['month'],
+            'day': start['day'],
+            'hour': start['hour'],
+            'minute': start['minute'] + start_thresh,
+            'second': start['second']
+        }
+        ensureTimeDict(start_time_dict)
+
+        end_time_dict = {
+            'year': start['year'],
+            'month': start['month'],
+            'day': start['day'],
+            'hour': start['hour'],
+            'minute': start['minute'] + end_thresh,
+            'second': start['second']
+        }
+        ensureTimeDict(end_time_dict)
+
+        start_time_string = stringify(start_time_dict)
+        end_time_string = stringify(end_time_dict)
+
+        query = queryDatabase(start_time_string, end_time_string)
+        
+        ## Get the average of query, add that to response
+        sums = {}
+        counts = {}
+        for item in query:
+            for key, value in item.items():
+                if isinstance(value, (int, float)):
+                    sums[key] = sums.get(key, 0) + value
+                    counts[key] = counts.get(key, 0) + 1
+
+        averages = {key: sums[key] / counts[key] for key in sums}
+        averages['time_tag_start'] = start_time_string
+        averages['time_tag_end'] = end_time_string
+
+        response.append(averages)
+
+        continue
+
+    print(response)
+    return response
 
 '''
 Creates a response given a start and end time.
@@ -34,6 +156,7 @@ def getResponse(start_time, end_time):
     if len(end_time) < 19 or len(start_time) < 19:
         return {'Error message': 'Invalid entry: time must be formatted like "2024-04-23T23:38:00" (yyyy-mm-ddThh:mm:ss)'}
 
+    # Form structs for easier manipulation
     start = {
         'year': int(start_time[0:4]),
         'month': int(start_time[5:7]),
@@ -50,24 +173,58 @@ def getResponse(start_time, end_time):
         'minute': int(end_time[14:16]),
         'second': int(end_time[17:])
     }
+    difference = {
+        'year': end['year'] - start['year'],
+        'month': end['month'] - start['month'],
+        'day': end['day'] - start['day'],
+        'hour': end['hour'] - start['hour'],
+        'minute': end['minute'] - start['minute'],
+        'second': end['second'] - start['second']
+    }
+    # Fix difference
+    if difference['month'] < 0 and difference['year'] > 0:
+            difference['year'] -= 1
+            difference['month'] += 12
+    if difference['day'] < 0 and difference['month'] == 1:
+        day_count = calendar.monthrange(start['year'], start['month'])[1]
+        if start['day'] == day_count and end['day'] == 1:
+            difference['month'] = 0
+            difference['day'] = 1
+    if difference['hour'] < 0 and difference['day'] > 0:
+            difference['day'] -= 1
+            difference['hour'] += 24
+    if difference['minute'] < 0 and difference['hour'] > 0:
+            difference['hour'] -=  1
+            difference['minute'] += 60
 
     # Ensure window is only 1 hour max
-    if not start['day'] == end['day']:
-        if (start['hour'] == 23) and (end['hour'] == 0):
-            if (start['minute'] - end['minute'] >= 0):
-                # OK
-                pass
+    if not difference['day'] == 0:
+        if difference['day'] == 1:
+            if (start['hour'] == 23) and (end['hour'] == 0):
+                if (difference['minute'] <= 0):
+                    # OK
+                    pass
+                else:
+                    # A day apart, but more than 60 minutes
+                    return {'Error message': 'Invalid entry: window of time cannot be >1 hour'}
             else:
+                # A day apart, but more than 1 hour
                 return {'Error message': 'Invalid entry: window of time cannot be >1 hour'}
         else:
+            # More than a day apart
             return {'Error message': 'Invalid entry: window of time cannot be >1 hour'}
-    if end['hour'] - start['hour'] > 1:
+    if difference['hour'] > 1:
         return {'Error message': 'Invalid entry: window of time cannot be >1 hour'}
-    if end['hour'] - start['hour'] == 1:
-        if end['minute'] - start['minute'] > 0:
+    if difference['hour'] == 1:
+        if difference['minute'] > 0:
            return {'Error message': 'Invalid entry: window of time cannot be >1 hour'} 
+
+    minutes = difference['minute']
+    if difference['hour'] == 1:
+        minutes += 60
+
     
-    response = queryDatabase(start_time, end_time)
+    response = groupAndAvg(start, minutes)
 
     return response
 

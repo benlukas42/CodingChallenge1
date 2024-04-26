@@ -1,3 +1,12 @@
+'''
+Challenge task 2 for Saber Astronautics.
+Extracts proton data, plotting the P1 channel against a 20-minute moving
+average.
+
+Author: Ben Lukas
+'''
+
+
 import pandas as pd
 import matplotlib.pyplot as plt
 import json

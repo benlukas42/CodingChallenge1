@@ -1,12 +1,16 @@
-maxNumber = 75;
-
 '''
+Challenge task 1 for Saber Astronautics.
 Prints the numbers from 1 to maxNumber line by line
 But, if the number is divisible by:
-    -> 4 and 7, print "Mission Control" instead.
+    -> 4 and 5, print "Mission Control" instead. (In the email it said 4 and 7 but that's probably a typo)
     -> 4, print "Mission" instead.
     -> 5, print "Control" instead.
+
+Author: Ben Lukas
 '''
+
+maxNumber = 75;
+
 def printNumbers():
     for i in range(1, maxNumber+1):
         if (i % 4 == 0) and (i % 7 == 0):
