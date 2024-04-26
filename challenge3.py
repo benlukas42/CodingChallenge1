@@ -1,4 +1,4 @@
-from flask import Flask, jsonify
+from flask import Flask, request, jsonify, render_template
 import json
 import sqlite3
 
@@ -7,44 +7,129 @@ filepath = './rtsw_mag_1m.json'
 app = Flask(__name__)
 time_period = ("2024-04-24T22:35:00", "2024-04-24T23:35:00")
 
-@app.route('/', methods=['GET'])
-def hello_world():
-    return "<p>Hello, World!</p>"
+'''
+Represents the REST endpoint.
+'''
+@app.route('/', methods=['GET', 'POST'])
+def index():
+    if request.method == 'POST':
+        start_time = request.form['start_time']
+        end_time = request.form['end_time']
+        response = getResponse(start_time, end_time)
+        return jsonify(response), 200
+    else:
+        return render_template('index.html')
 
-# @app.route('/getresource', methods=['GET'])
-# def get_resource():
-#     data = {'id': 1, 'name': 'Example Resource'}
-#     return jsonify(data)  # Return the data as JSON response
+'''
+Creates a response given a start and end time.
+Returns an error if the start and end time are inappropriate.
+'''
+def getResponse(start_time, end_time):
 
-def queryDatabase():
+    # Structure: 2024-04-23T23:38:00
+
+    # Check for basic violations
+    if end_time < start_time:
+        return {'Error message': 'Invalid entry: Start time is later than end time'}
+    if len(end_time) < 19 or len(start_time) < 19:
+        return {'Error message': 'Invalid entry: time must be formatted like "2024-04-23T23:38:00" (yyyy-mm-ddThh:mm:ss)'}
+
+    start = {
+        'year': int(start_time[0:4]),
+        'month': int(start_time[5:7]),
+        'day': int(start_time[8:10]),
+        'hour': int(start_time[11:13]),
+        'minute': int(start_time[14:16]),
+        'second': int(start_time[17:])
+    }
+    end = {
+        'year': int(end_time[0:4]),
+        'month': int(end_time[5:7]),
+        'day': int(end_time[8:10]),
+        'hour': int(end_time[11:13]),
+        'minute': int(end_time[14:16]),
+        'second': int(end_time[17:])
+    }
+
+    # Ensure window is only 1 hour max
+    if not start['day'] == end['day']:
+        if (start['hour'] == 23) and (end['hour'] == 0):
+            if (start['minute'] - end['minute'] >= 0):
+                # OK
+                pass
+            else:
+                return {'Error message': 'Invalid entry: window of time cannot be >1 hour'}
+        else:
+            return {'Error message': 'Invalid entry: window of time cannot be >1 hour'}
+    if end['hour'] - start['hour'] > 1:
+        return {'Error message': 'Invalid entry: window of time cannot be >1 hour'}
+    if end['hour'] - start['hour'] == 1:
+        if end['minute'] - start['minute'] > 0:
+           return {'Error message': 'Invalid entry: window of time cannot be >1 hour'} 
+    
+    response = queryDatabase(start_time, end_time)
+
+    return response
+
+
+'''
+Queries the database for entries between start and end time.
+'''
+def queryDatabase(start_time, end_time):
+
     # Connect to the database
+    print("Querying database")
     conn = sqlite3.connect('rtsw_mag_1m.db')
     cursor = conn.cursor()
 
+    # Form the query
     select_query = ("""
-    SELECT time_tag
+    SELECT DISTINCT *
     FROM my_table
-    WHERE time_tag >= '""" + time_period[0] +
-    """' AND time_tag <= '""" + time_period[1] + """'""")
-
-    # print(select_query)
+    WHERE time_tag >= '""" + start_time +
+    """' AND time_tag <= '""" + end_time + """'""")
 
     cursor.execute(select_query)
     rows = cursor.fetchall()
-
-    # print("--> Results of query: ")
-    # for row in rows:
-    #     print(row)
-    #     print()
+    
+    # reconstruct the attribute table
+    response = []
+    for row in rows:
+        response.append({
+            'time_tag': row[0],
+            'active': row[1],
+            'source': row[2],
+            'range': row[3],
+            'scale': row[4],
+            'sensitivity': row[5],
+            'manual_mode': row[6],
+            'sample_size': row[7],
+            'bt': row[8],
+            'bx_gse': row[9],
+            'by_gse': row[10],
+            'bz_gse': row[11],
+            'theta_gse': row[12],
+            'phi_gse': row[13],
+            'bx_gsm': row[14],
+            'by_gsm': row[15],
+            'bz_gsm': row[16],
+            'theta_gsm': row[17],
+            'phi_gsm': row[18],
+            'max_telemetry_flag': row[19],
+            'max_data_flag': row[20],
+            'overall_quality': row[21]
+        })
 
     # Commit changes and close cursor
     conn.commit()
     conn.close()
 
-    return
+    return response
 
-
-def openDatabase():
+'''
+Creates/initializes the database.
+'''
+def initDatabase():
     with open(filepath, 'r') as file:
         data = json.load(file)
         # Connect to SQLite database and create cursor
@@ -52,6 +137,9 @@ def openDatabase():
 
     return
 
+'''
+Fills out the relation of our new database using the data from filepath.
+'''
 def createTable(data):
     conn = sqlite3.connect('rtsw_mag_1m.db')
     cursor = conn.cursor()
@@ -131,8 +219,6 @@ def createTable(data):
 
 if __name__ == '__main__':
 
-    openDatabase()
-
-    queryDatabase()
+    initDatabase()
 
     app.run(debug=True)  # Run the Flask application in debug mode
